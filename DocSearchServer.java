@@ -5,8 +5,9 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 class FileHelpers {
     static List<File> getFiles(Path start) throws IOException {
@@ -32,11 +33,39 @@ class FileHelpers {
 
 class Handler implements URLHandler {
     List<File> files;
+    private static Map<String, Function<URI, String>> HANDLERS = new HashMap<>();
+
     Handler(String directory) throws IOException {
       this.files = FileHelpers.getFiles(Paths.get(directory));
+        HANDLERS.put("/", url -> "There are " + this.files.size() + " files to search");
+        HANDLERS.put("/search", url -> {
+            String[] rawQuery = url.getQuery().split("=");
+            String query = null;
+            if (rawQuery.length == 2 && rawQuery[0].equalsIgnoreCase("q")) {
+                query = rawQuery[1];
+            }
+
+            if (query == null) return "Please enter a valid search query!";
+
+            String finalQuery = query;
+            List<File> found = this.files.stream().filter(file -> {
+                try {
+                    return FileHelpers.readFile(file).toLowerCase(Locale.ROOT).contains(finalQuery.toLowerCase(Locale.ROOT));
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }).collect(Collectors.toList());
+
+            return "There are " + found.size() + " files found: " + found.stream().map(File::getPath).collect(Collectors.joining(", "));
+        });
     }
     public String handleRequest(URI url) throws IOException {
-      return "Don't know how to handle that path!";
+        String path = url.getPath();
+
+        Function<URI, String> handler = HANDLERS.get(path.toLowerCase());
+        if (handler != null) return handler.apply(url);
+
+        return "404 Not Found!";
     }
 }
 
